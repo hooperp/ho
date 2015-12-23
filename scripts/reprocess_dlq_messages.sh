@@ -15,10 +15,10 @@ ACTIVEMQ_ADMIN_SCRIPT=$ACTIVEMQ_BIN_DIR/activemq
 ACTIVEMQ_MANAGER_JAR=$ACTIVEMQ_SCRIPTS_DIR/activemq-manager.jar
 ACTIVEMQ_PID=$(ps -ef| grep [a]ctivemq | awk ' { print $2 } ')
 
-function Log {
+function Log () {
 
     if [ $# -ne 2 ] ; then
-        echo "Log function requires two argument - the log type and the message"
+        echo "Log function requires two arguments - the log type and the message"
         echo "i.e Log Error \"Unable to find file - process exiting\""
         echo "Logs of type ERROR will additionally script abend"
         exit 1
@@ -39,7 +39,7 @@ function Log {
 
 }
 
-function Usage {
+function Usage () {
 
     clear
 
@@ -90,7 +90,7 @@ if [[ "$FromQueue" && -z "$ToQueue" || "$ToQueue" && -z "$FromQueue" || "$FromQu
 fi
 
 # Validate prerequisites
-if [[ -z $ACTIVEMQ_PID ]] ; then
+if [ -z $ACTIVEMQ_PID ] ; then
     Log Error "activemq process is not running - exiting process"
 else
     Log Info "activemq is running under process id [$ACTIVEMQ_PID]"
@@ -136,17 +136,17 @@ if [ "$AllQueues" ] ; then
                 fi
 
                 # Hold off until the queue is empty
-                #while (true)
-                #do
-                    #UnprocesedMessagesCount=$($ACTIVEMQ_ADMIN_SCRIPT dstat | awk -v QueueName="^"$QueueName"$" ' {if ($1 ~ QueueName) print $2 } ')
+                while (true)
+                do
+                    UnprocesedMessagesCount=$($ACTIVEMQ_ADMIN_SCRIPT dstat | awk -v QueueName="^"$QueueName"$" ' {if ($1 ~ QueueName) print $2 } ')
 
-                    #if [ "$UnprocesedMessagesCount" -ne 0 ] ; then
-                        #echo "Processing queue [$QueueName] [$UnprocesedMessagesCount] messages remaining ..."
-                        #sleep 3
-                    #else
-                        #continue
-                    #fi
-                #done
+                    if [ "$UnprocesedMessagesCount" -ne 0 ] ; then
+                        echo "Processing queue [$QueueName] [$UnprocesedMessagesCount] messages remaining ..."
+                        sleep 3
+                    else
+                        continue
+                    fi
+                done
             else
                 Log Info "No messages found on queue [$SourceQueue]"
             fi
@@ -156,14 +156,13 @@ if [ "$AllQueues" ] ; then
 
     done
 
-    $ACTIVEMQ_ADMIN_SCRIPT dstat | grep DLQ | while read _line
+    $ACTIVEMQ_ADMIN_SCRIPT dstat | grep "^USERS.*.DLQ" | while read _line
     do
-    
         SourceQueue=$(echo $_line | awk ' { print $1 } ')
         TargetQueue=$(echo $SourceQueue | sed -e 's!DLQ!!g' -e 's!\.$!!g')
         TotalQueueSize=$(echo $_line | awk ' { print $2 } ')
     
-        if [[ $TotalQueueSize -ne 0 ]] ; then
+        if [ $TotalQueueSize -ne 0 ] ; then
     
             Log Info "Moving [$TotalQueueSize] from queue [$SourceQueue] to queue [$TargetQueue]"
             java -jar ./activemq-manager.jar --move-queue $SourceQueue $TargetQueue 
@@ -192,7 +191,7 @@ if [ "$FromQueue" ] ; then
     fi
 
     MessagesOnQueue=$(echo $FromQueue | awk ' { print $2 } ')
-    if [[ "$MessagesOnQueue" -ne 0 ]] ; then
+    if [ "$MessagesOnQueue" -ne 0 ] ; then
         Log Info "Moving [$MessagesOnQueue] messages from queue [$FromQueue] to [$ToQueue]"
         java -jar $ACTIVEMQ_MANAGER_JAR --move-queue $FromQueue $ToQueue 
 
