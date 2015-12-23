@@ -2,17 +2,11 @@
 
 # Assumption
 
-# 1. The original queue name is the same as its DLQ string
+# 1. The original queue name is the same as its DLQ string minus the DLQ piece 
 
 # Considerations
 # 1. The intention is for this process to be executed manually, therefore
 #    all feedback will come via stdout/stderr
-
-ACTIVEMQ_HOME=/opt/activemq
-ACTIVEMQ_BIN_DIR=$ACTIVEMQ_HOME/bin
-ACTIVEMQ_SCRIPTS_DIR=$ACTIVEMQ_HOME/scripts
-ACTIVEMQ_ADMIN_SCRIPT=$ACTIVEMQ_BIN_DIR/activemq
-ACTIVEMQ_MANAGER_JAR=$ACTIVEMQ_SCRIPTS_DIR/activemq-manager.jar
 
 function Log () {
 
@@ -105,6 +99,12 @@ while getopts "hf:t:a" arg; do
       esac
 done
 
+ACTIVEMQ_HOME=/opt/activemq
+ACTIVEMQ_BIN_DIR=$ACTIVEMQ_HOME/bin
+ACTIVEMQ_SCRIPTS_DIR=$ACTIVEMQ_HOME/scripts
+ACTIVEMQ_ADMIN_SCRIPT=$ACTIVEMQ_BIN_DIR/activemq
+ACTIVEMQ_MANAGER_JAR=$ACTIVEMQ_SCRIPTS_DIR/activemq-manager.jar
+
 # Validate commamnd line options
 if [[ "$FromQueue" && -z "$ToQueue" || "$ToQueue" && -z "$FromQueue" || "$FromQueue" && "$AllQueues" || "$ToQueue" && "$AllQueues" ]] ; then
     Usage
@@ -181,7 +181,7 @@ if [ "$AllQueues" ] ; then
     
         if [ $MessagesOnQueue -ne 0 ] ; then
             # Perform the transfer
-            MoveMessages $FromQueue $PriorityQueue
+            MoveMessages $FromQueue $ToQueue
         else
             Log Info "No messages found on queue [$FromQueue]"
         fi
