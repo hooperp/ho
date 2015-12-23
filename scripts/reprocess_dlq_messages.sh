@@ -64,7 +64,7 @@ function MoveMessages () {
         DestQueue=$2
     fi
 
-    Log Info "Moving [$MessagesOnQueue] from queue [$SourceQueue] to queue [$DestQueue]"
+    Log Info "Moving [$MessagesOnQueue] messages from queue [$SourceQueue] to queue [$DestQueue]"
     java -jar $ACTIVEMQ_MANAGER_JAR --move-queue $SourceQueue $DestQueue
 
     if [ $? -ne 0 ] ; then
