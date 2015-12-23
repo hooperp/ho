@@ -13,7 +13,6 @@ ACTIVEMQ_BIN_DIR=$ACTIVEMQ_HOME/bin
 ACTIVEMQ_SCRIPTS_DIR=$ACTIVEMQ_HOME/scripts
 ACTIVEMQ_ADMIN_SCRIPT=$ACTIVEMQ_BIN_DIR/activemq
 ACTIVEMQ_MANAGER_JAR=$ACTIVEMQ_SCRIPTS_DIR/activemq-manager.jar
-ACTIVEMQ_PID=$(ps -ef| grep [a]ctivemq | awk ' { print $2 } ')
 
 function Log () {
 
@@ -61,11 +60,33 @@ function Usage () {
 
 }
 
+function MoveMessages () { 
+
+    if [ $# -ne 2 ] ; then 
+        Log Info "Function MoveMessages requires two arguments, the queue to move the messages from and the queue to move the messages to"
+        Log Error "i.e MoveMessages <FromQueue> <ToQueue>"]
+    else 
+        SourceQueue=$1
+        DestQueue=$2
+    fi
+
+    Log Info "Moving [$MessagesOnQueue] from queue [$SourceQueue] to queue [$DestQueue]"
+    java -jar $ACTIVEMQ_MANAGER_JAR --move-queue $SourceQueue $DestQueue
+
+    if [ $? -ne 0 ] ; then
+        Log Info "Transfer of message failed from queue [$SourceQueue] to queue [$DestQueue]"
+    fi
+
+    return 
+
+}
+
+
 # MAIN
 
 # Gather options from the command line
 
-while getopts ":hf:t:a" arg; do
+while getopts "hf:t:a" arg; do
 
     case $arg in
 
@@ -90,6 +111,7 @@ if [[ "$FromQueue" && -z "$ToQueue" || "$ToQueue" && -z "$FromQueue" || "$FromQu
 fi
 
 # Validate prerequisites
+ACTIVEMQ_PID=$(ps -ef| grep [a]ctivemq | awk ' { print $2 } ')
 if [ -z $ACTIVEMQ_PID ] ; then
     Log Error "activemq process is not running - exiting process"
 else
@@ -114,64 +136,54 @@ fi
 
 if [ "$AllQueues" ] ; then
 
-    declare -a QueueOrderArray
+    declare -a PriorityQueueArray
 
     PriorityQueueArray=(USERS.cid-in-people USERS.cid-in-cases USERS.cid-in-person_case USERS.crs-in-namedperson)
 
-    for QueueName in ${PriorityQueueArray[@]}
+    for PriorityQueue in ${PriorityQueueArray[@]}
     do
-        SourceQueue=$QueueName.DLQ
-        DstatRecordDLQ=$($ACTIVEMQ_ADMIN_SCRIPT dstat | grep $SourceQueue)
+        FromQueue=$PriorityQueue.DLQ
+        DstatRecordDLQ=$($ACTIVEMQ_ADMIN_SCRIPT dstat | grep $FromQueue)
         MessagesOnQueue=$(echo $DstatRecordDLQ | awk ' { print $2 } ')
 
         if [ "$DstatRecordDLQ" ] ; then
             if [ "$MessagesOnQueue" -ne 0 ] ; then
 
-                Log Info "Moving [$MessagesOnQueue] from queue [$SourceQueue] to queue [$QueueName]"
-                java -jar $ACTIVEMQ_MANAGER_JAR --move-queue $SourceQueue $QueueName 
-
-                if [ $? -ne 0 ] ; then
-                    Log Info "Transfer of message failed from queue [$SourceQueue] to [$QueueName]"
-                    continue
-                fi
+                # Perform the transfer
+                MoveMessages $FromQueue $PriorityQueue
 
                 # Hold off until the queue is empty
                 while (true)
                 do
-                    UnprocesedMessagesCount=$($ACTIVEMQ_ADMIN_SCRIPT dstat | awk -v QueueName="^"$QueueName"$" ' {if ($1 ~ QueueName) print $2 } ')
+                    UnprocesedMessagesCount=$($ACTIVEMQ_ADMIN_SCRIPT dstat | awk -v PriorityQueue="^"$PriorityQueue"$" ' {if ($1 ~ PriorityQueue) print $2 } ')
 
                     if [ "$UnprocesedMessagesCount" -ne 0 ] ; then
-                        echo "Processing queue [$QueueName] [$UnprocesedMessagesCount] messages remaining ..."
+                        echo "Processing queue [$PriorityQueue] [$UnprocesedMessagesCount] messages remaining ..."
                         sleep 3
                     else
                         continue
                     fi
                 done
             else
-                Log Info "No messages found on queue [$SourceQueue]"
+                Log Info "No messages found on queue [$FromQueue]"
             fi
         else
-            Log Info "Unable to find queue name [ $SourceQueue ] - not processing"
+            Log Info "Unable to find queue name [ $FromQueue ] - not processing"
         fi
 
     done
 
     $ACTIVEMQ_ADMIN_SCRIPT dstat | grep "^USERS.*.DLQ" | while read _line
     do
-        SourceQueue=$(echo $_line | awk ' { print $1 } ')
-        TargetQueue=$(echo $SourceQueue | sed -e 's!DLQ!!g' -e 's!\.$!!g')
-        TotalQueueSize=$(echo $_line | awk ' { print $2 } ')
+        FromQueue=$(echo $_line | awk ' { print $1 } ')
+        ToQueue=$(echo $FromQueue | sed -e 's!DLQ!!g' -e 's!\.$!!g')
+        MessagesOnQueue=$(echo $_line | awk ' { print $2 } ')
     
-        if [ $TotalQueueSize -ne 0 ] ; then
-    
-            Log Info "Moving [$TotalQueueSize] from queue [$SourceQueue] to queue [$TargetQueue]"
-            java -jar ./activemq-manager.jar --move-queue $SourceQueue $TargetQueue 
-    
-            if [ $? -ne 0 ] ; then
-                echo "Unable to move messages from [ $SourceQueue ] to [ $TargetQueue ]"
-            fi
+        if [ $MessagesOnQueue -ne 0 ] ; then
+            # Perform the transfer
+            MoveMessages $FromQueue $PriorityQueue
         else
-            Log Info "No messages found on queue [$SourceQueue]"
+            Log Info "No messages found on queue [$FromQueue]"
         fi
 
     done
@@ -190,15 +202,11 @@ if [ "$FromQueue" ] ; then
         Log Error "ToQueue [$ToQueue] is not a valid queue"
     fi
 
-    MessagesOnQueue=$(echo $FromQueue | awk ' { print $2 } ')
-    if [ "$MessagesOnQueue" -ne 0 ] ; then
-        Log Info "Moving [$MessagesOnQueue] messages from queue [$FromQueue] to [$ToQueue]"
-        java -jar $ACTIVEMQ_MANAGER_JAR --move-queue $FromQueue $ToQueue 
+    MessagesOnQueue=$($ACTIVEMQ_ADMIN_SCRIPT dstat | awk -v FromQueue="^"$FromQueue"$" ' {if ($1 ~ FromQueue) print $2 } ')
 
-        if [ $? -ne 0 ] ; then
-            Log Info "Transfer of message failed from queue [$FromQueue] to [$ToQueue]"
-            continue
-        fi
+    if [ "$MessagesOnQueue" -ne 0 ] ; then
+        # Perform the transfer
+        MoveMessages $FromQueue $ToQueue
     else
         Log Info "No messages found on queue [$FromQueue]"
     fi
